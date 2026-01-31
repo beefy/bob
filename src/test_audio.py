@@ -49,7 +49,7 @@ class AudioLoopback:
         print(f"  Buffer Size: {self.delay_chunks} chunks")
     
     def list_devices(self):
-        """List all available audio devices"""
+        """List all available audio devices with supported sample rates"""
         if self.audio is None:
             self.audio = pyaudio.PyAudio()
         
@@ -60,6 +60,15 @@ class AudioLoopback:
             print(f"  Max Input Channels: {info['maxInputChannels']}")
             print(f"  Max Output Channels: {info['maxOutputChannels']}")
             print(f"  Default Sample Rate: {info['defaultSampleRate']}")
+            
+            # Show supported sample rates for devices with inputs/outputs
+            if info['maxInputChannels'] > 0:
+                input_rates = self.get_supported_sample_rates(i, is_input=True)
+                print(f"  Supported Input Rates: {input_rates}")
+            
+            if info['maxOutputChannels'] > 0:
+                output_rates = self.get_supported_sample_rates(i, is_input=False)
+                print(f"  Supported Output Rates: {output_rates}")
             print()
     
     def find_usb_devices(self):
@@ -76,8 +85,50 @@ class AudioLoopback:
         
         return usb_devices
     
+    def get_supported_sample_rates(self, device_index, is_input=True):
+        """Get supported sample rates for a device"""
+        if self.audio is None:
+            self.audio = pyaudio.PyAudio()
+            
+        device_info = self.audio.get_device_info_by_index(device_index)
+        
+        # Common sample rates to test
+        standard_rates = [8000, 11025, 16000, 22050, 44100, 48000, 88200, 96000]
+        supported_rates = []
+        
+        for rate in standard_rates:
+            try:
+                if is_input and device_info['maxInputChannels'] > 0:
+                    # Test input
+                    test_stream = self.audio.open(
+                        format=self.format,
+                        channels=1,
+                        rate=rate,
+                        input=True,
+                        input_device_index=device_index,
+                        frames_per_buffer=1024
+                    )
+                    test_stream.close()
+                    supported_rates.append(rate)
+                elif not is_input and device_info['maxOutputChannels'] > 0:
+                    # Test output
+                    test_stream = self.audio.open(
+                        format=self.format,
+                        channels=1,
+                        rate=rate,
+                        output=True,
+                        output_device_index=device_index,
+                        frames_per_buffer=1024
+                    )
+                    test_stream.close()
+                    supported_rates.append(rate)
+            except:
+                pass  # Rate not supported
+        
+        return supported_rates
+
     def setup_streams(self, input_device=None, output_device=None):
-        """Setup input and output streams"""
+        """Setup input and output streams with automatic sample rate detection"""
         self.audio = pyaudio.PyAudio()
         
         # Find USB devices if not specified
@@ -94,6 +145,41 @@ class AudioLoopback:
         
         print(f"\nUsing Input Device: {input_device}")
         print(f"Using Output Device: {output_device}")
+        
+        # Find compatible sample rate
+        if input_device is not None:
+            input_rates = self.get_supported_sample_rates(input_device, is_input=True)
+            print(f"Input device supported rates: {input_rates}")
+        else:
+            input_rates = [self.sample_rate]
+            
+        if output_device is not None:
+            output_rates = self.get_supported_sample_rates(output_device, is_input=False)
+            print(f"Output device supported rates: {output_rates}")
+        else:
+            output_rates = [self.sample_rate]
+        
+        # Find common sample rate
+        common_rates = list(set(input_rates) & set(output_rates))
+        if common_rates:
+            # Prefer higher sample rates, but use the original if available
+            if self.sample_rate in common_rates:
+                working_rate = self.sample_rate
+            else:
+                working_rate = max(common_rates)
+            print(f"Using sample rate: {working_rate} Hz")
+            self.sample_rate = working_rate
+            
+            # Recalculate delay buffer with new sample rate
+            self.delay_samples = int(self.delay_seconds * self.sample_rate)
+            self.delay_chunks = self.delay_samples // self.chunk_size + 1
+            self.audio_buffer = deque(maxlen=self.delay_chunks)
+            silence = np.zeros(self.chunk_size, dtype=np.float32)
+            for _ in range(self.delay_chunks):
+                self.audio_buffer.append(silence)
+        else:
+            print("✗ No common sample rate found between input and output devices")
+            return False
         
         # Setup input stream (microphone)
         try:
