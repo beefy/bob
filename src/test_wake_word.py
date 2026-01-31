@@ -1,92 +1,81 @@
 #!/usr/bin/env python3
 """
-Wake Word Detection Test using OpenWakeWord
+Wake Word Detection Test using SpeechRecognition
 Listens for "Hey Bob" wake word and responds with TTS.
 """
 
-import pyaudio
-import numpy as np
+import speech_recognition as sr
 import pyttsx3
 import sys
 import signal
 import threading
-from openwakeword.model import Model
-from openwakeword import utils
+import time
 
 
 class WakeWordDetector:
-    def __init__(self, wake_word_models=None, sample_rate=16000, chunk_size=1280):
-        self.sample_rate = sample_rate
-        self.chunk_size = chunk_size
-        self.format = pyaudio.paInt16
-        self.channels = 1
-        
-        # Initialize OpenWakeWord model
-        if wake_word_models is None:
-            # Use default "hey jarvis" model (closest to "hey bob")
-            wake_word_models = ["hey_jarvis_v0.1"]
-        
-        self.model = Model(wakeword_models=wake_word_models, inference_framework="tflite")
-        self.wake_words = list(self.model.models.keys())
-        
-        # Audio setup
-        self.audio = None
-        self.input_stream = None
+    def __init__(self, wake_phrase="hey bob"):
+        self.wake_phrase = wake_phrase.lower()
         self.running = False
+        self.listening_paused = False
+        
+        # Speech recognition setup
+        self.recognizer = sr.Recognizer()
+        self.microphone = None
+        
+        # Adjust recognizer sensitivity
+        self.recognizer.energy_threshold = 300  # Minimum audio energy to consider for recording
+        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.pause_threshold = 1.0  # Seconds of non-speaking audio before a phrase is considered complete
         
         # TTS setup
         self.tts_engine = pyttsx3.init()
         
         print(f"Wake Word Detector Configuration:")
-        print(f"  Sample Rate: {self.sample_rate} Hz")
-        print(f"  Chunk Size: {self.chunk_size} samples")
-        print(f"  Wake Words: {self.wake_words}")
-        print(f"  Note: Using 'hey jarvis' model as closest match to 'Hey Bob'")
+        print(f"  Wake Phrase: '{self.wake_phrase}'")
+        print(f"  Using Google Speech Recognition (requires internet)")
     
     def find_usb_microphone(self):
         """Find USB microphone device"""
-        if self.audio is None:
-            self.audio = pyaudio.PyAudio()
+        mic_list = sr.Microphone.list_microphone_names()
         
-        for i in range(self.audio.get_device_count()):
-            info = self.audio.get_device_info_by_index(i)
-            name = info['name'].lower()
-            if 'usb' in name and info['maxInputChannels'] > 0:
+        print("\\nAvailable microphones:")
+        for i, name in enumerate(mic_list):
+            print(f"  {i}: {name}")
+            if 'usb' in name.lower():
+                print(f"    ^ Found USB microphone: {i}")
                 return i
         
+        print("No USB microphone found, using default")
         return None
     
     def setup_microphone(self, device_index=None):
-        """Setup microphone stream"""
-        if self.audio is None:
-            self.audio = pyaudio.PyAudio()
-        
-        if device_index is None:
-            device_index = self.find_usb_microphone()
-        
-        if device_index is not None:
-            print(f"Using microphone device: {device_index}")
-        else:
-            print("Using default microphone device")
-        
+        """Setup microphone"""
         try:
-            self.input_stream = self.audio.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=device_index,
-                frames_per_buffer=self.chunk_size
-            )
-            print("✓ Microphone initialized")
+            if device_index is None:
+                device_index = self.find_usb_microphone()
+            
+            if device_index is not None:
+                self.microphone = sr.Microphone(device_index=device_index)
+                print(f"Using microphone device: {device_index}")
+            else:
+                self.microphone = sr.Microphone()
+                print("Using default microphone")
+            
+            # Calibrate microphone for ambient noise
+            print("Calibrating microphone for ambient noise... (speak now to test)")
+            with self.microphone as source:
+                self.recognizer.adjust_for_ambient_noise(source, duration=2)
+            
+            print(f"✓ Microphone initialized (energy threshold: {self.recognizer.energy_threshold})")
             return True
+            
         except Exception as e:
             print(f"✗ Failed to initialize microphone: {e}")
             return False
     
-    def on_wake_word_detected(self, wake_word):
+    def on_wake_word_detected(self):
         """Called when wake word is detected"""
-        print(f"🎯 Wake word detected: {wake_word}")
+        print(f"🎯 Wake phrase detected: '{self.wake_phrase}'")
         
         # Stop listening temporarily
         self.pause_listening()
@@ -112,46 +101,51 @@ class WakeWordDetector:
     
     def listen_for_wake_word(self):
         """Main listening loop"""
-        print("👂 Listening for wake word...")
-        print("Say 'Hey Jarvis' (closest to 'Hey Bob' in available models)")
+        print(f"👂 Listening for wake phrase: '{self.wake_phrase}'")
+        print("Speak clearly towards the microphone...")
         print("Press Ctrl+C to stop...")
         
         self.listening_paused = False
         
-        try:
-            while self.running:
-                if self.listening_paused:
-                    # Wait while paused
-                    import time
-                    time.sleep(0.1)
-                    continue
+        while self.running:
+            if self.listening_paused:
+                time.sleep(0.1)
+                continue
+            
+            try:
+                # Listen for audio
+                with self.microphone as source:
+                    print("🎤 Listening...")
+                    # Listen for audio with timeout
+                    audio = self.recognizer.listen(source, timeout=1.0, phrase_time_limit=5.0)
                 
-                # Read audio data
                 try:
-                    audio_data = self.input_stream.read(self.chunk_size, exception_on_overflow=False)
-                    audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                    # Use Google Speech Recognition (requires internet)
+                    text = self.recognizer.recognize_google(audio).lower()
+                    print(f"Heard: '{text}'")
                     
-                    # Convert to float32 for OpenWakeWord (normalized to -1 to 1)
-                    audio_float = audio_array.astype(np.float32) / 32768.0
+                    # Check if wake phrase is in the recognized text
+                    if self.wake_phrase in text:
+                        self.on_wake_word_detected()
                     
-                    # Get predictions from the model
-                    prediction = self.model.predict(audio_float)
+                except sr.UnknownValueError:
+                    # Could not understand audio
+                    print(".", end="", flush=True)  # Show activity
+                    pass
                     
-                    # Check for wake word detection
-                    for wake_word, score in prediction.items():
-                        if score > 0.5:  # Threshold for detection
-                            self.on_wake_word_detected(wake_word)
-                            break
-                            
-                except Exception as e:
-                    if self.running:
-                        print(f"Audio processing error: {e}")
-                    break
+                except sr.RequestError as e:
+                    print(f"Speech recognition error: {e}")
+                    time.sleep(1.0)
                     
-        except KeyboardInterrupt:
-            print("\\nReceived interrupt in listening loop")
-        finally:
-            print("Listening stopped")
+            except sr.WaitTimeoutError:
+                # No speech detected within timeout
+                print(".", end="", flush=True)  # Show activity
+                pass
+                
+            except Exception as e:
+                if self.running:
+                    print(f"\\nAudio processing error: {e}")
+                break
     
     def start(self, mic_device=None):
         """Start wake word detection"""
@@ -169,13 +163,6 @@ class WakeWordDetector:
     def stop(self):
         """Stop wake word detection"""
         self.running = False
-        
-        if self.input_stream:
-            self.input_stream.stop_stream()
-            self.input_stream.close()
-        
-        if self.audio:
-            self.audio.terminate()
         
         if self.tts_engine:
             self.tts_engine.stop()
@@ -195,29 +182,24 @@ def signal_handler(signum, frame):
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description='Wake word detection test using OpenWakeWord')
+    parser = argparse.ArgumentParser(description='Wake word detection test using SpeechRecognition')
     parser.add_argument('--mic-device', type=int, help='Microphone device index')
-    parser.add_argument('--list-devices', action='store_true', help='List available audio devices')
+    parser.add_argument('--list-devices', action='store_true', help='List available microphones')
+    parser.add_argument('--wake-phrase', default='hey bob', help='Wake phrase to listen for')
     
     args = parser.parse_args()
     
     # List devices if requested
     if args.list_devices:
-        audio = pyaudio.PyAudio()
-        print("\\n=== Available Input Devices (Microphones) ===")
-        for i in range(audio.get_device_count()):
-            info = audio.get_device_info_by_index(i)
-            if info['maxInputChannels'] > 0:
-                print(f"Device {i}: {info['name']}")
-                print(f"  Max Input Channels: {info['maxInputChannels']}")
-                print(f"  Default Sample Rate: {info['defaultSampleRate']}")
-                print()
-        audio.terminate()
+        print("\\n=== Available Microphones ===")
+        mic_list = sr.Microphone.list_microphone_names()
+        for i, name in enumerate(mic_list):
+            print(f"Device {i}: {name}")
         return
     
     # Create wake word detector
     global detector
-    detector = WakeWordDetector()
+    detector = WakeWordDetector(wake_phrase=args.wake_phrase)
     
     # Setup signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
@@ -226,7 +208,6 @@ def main():
         if detector.start(args.mic_device):
             # Keep running until interrupted
             while detector.running:
-                import time
                 time.sleep(0.1)
         else:
             print("Failed to start wake word detection")
