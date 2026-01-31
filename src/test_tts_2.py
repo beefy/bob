@@ -1,4 +1,5 @@
-from espeak import espeak
+import pyttsx
 
-def hello_world():
-    espeak.synth("Hello World")
+engine = pyttsx.init()
+engine.say('Good morning.')
+engine.runAndWait()
