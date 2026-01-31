@@ -56,7 +56,7 @@ cd bob
 
 ```
 sudo apt-get update
-sudo apt-get install portaudio19-dev python3-dev
+sudo apt-get install portaudio19-dev python3-dev alsa-utils alsa-plugins-extra libasound2-plugins
 pip install -r requirements.txt
 ```
 
@@ -73,7 +73,7 @@ sudo nano /etc/asound.conf
 Add:
 ```
 pcm.!default {
-    type hw
+    type plughw
     card X
 }
 ctl.!default {
