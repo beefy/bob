@@ -37,16 +37,17 @@ class LocalLLM:
                 trust_remote_code=True
             )
             
-            # Load model with optimizations for Raspberry Pi
+            # Load model with simplified parameters for Raspberry Pi
             print("Loading model (this is the slow part)...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                torch_dtype=torch.float32,  # Use float32 for CPU
-                device_map="cpu",
                 trust_remote_code=True,
                 low_cpu_mem_usage=True,
-                max_memory={0: f"{self.max_memory_gb}GB"}
+                torch_dtype=torch.float32  # Explicit float32 for CPU
             )
+            
+            # Move model to CPU explicitly
+            self.model = self.model.to('cpu')
             
             # Set pad token if not present
             if self.tokenizer.pad_token is None:
@@ -56,14 +57,32 @@ class LocalLLM:
             print(f"✅ Model loaded successfully in {load_time:.1f} seconds")
             
             # Print model info
-            num_params = sum(p.numel() for p in self.model.parameters())
-            print(f"📊 Model parameters: {num_params:,}")
+            try:
+                num_params = sum(p.numel() for p in self.model.parameters())
+                print(f"📊 Model parameters: {num_params:,}")
+            except:
+                print("📊 Model loaded (parameter count unavailable)")
             
             return True
             
         except Exception as e:
             print(f"❌ Failed to load model: {e}")
-            return False
+            print(f"Error type: {type(e).__name__}")
+            
+            # Try alternative loading method
+            print("🔄 Trying alternative loading method...")
+            try:
+                # Simplified loading without device_map
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    trust_remote_code=True
+                )
+                self.model = self.model.to('cpu')
+                print("✅ Model loaded with alternative method")
+                return True
+            except Exception as e2:
+                print(f"❌ Alternative loading also failed: {e2}")
+                return False
     
     def generate_response(self, prompt, max_length=512, temperature=0.7, do_sample=True):
         """Generate a response using the loaded model"""
