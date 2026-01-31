@@ -63,7 +63,7 @@ class PiperTTS:
         print("   sudo mv piper /usr/local/bin/")
         print("\nAfter installation, you'll also need a voice model.")
         print("Download a voice model from: https://github.com/rhasspy/piper/blob/master/VOICES.md")
-        return False
+        return None
     
     def list_devices(self):
         """List all available audio devices"""
@@ -193,7 +193,8 @@ class PiperTTS:
     def synthesize_speech(self, text, voice_model=None):
         """Use Piper to synthesize speech from text"""
         if not self.check_piper_installation():
-            return self.install_piper()
+            self.install_piper()
+            return None
         
         # Find voice model if not specified
         if voice_model is None:
@@ -280,6 +281,10 @@ class PiperTTS:
             print("Output stream not initialized")
             return False
         
+        if not audio_data or not isinstance(audio_data, bytes):
+            print("Invalid audio data provided")
+            return False
+        
         try:
             # Start the stream
             self.output_stream.start_stream()
@@ -316,7 +321,8 @@ class PiperTTS:
         
         # Generate speech audio
         audio_data = self.synthesize_speech(text, voice_model)
-        if audio_data is None:
+        if audio_data is None or not audio_data:
+            print("❌ Failed to synthesize speech")
             return False
         
         # Setup output stream
