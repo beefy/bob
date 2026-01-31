@@ -56,7 +56,7 @@ cd bob
 
 ```
 sudo apt-get update
-sudo apt-get install portaudio19-dev python3-dev alsa-utils alsa-plugins-extra libasound2-plugins
+sudo apt-get install portaudio19-dev python3-dev alsa-utils libasound2-plugins
 pip install -r requirements.txt
 ```
 
