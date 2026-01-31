@@ -33,6 +33,7 @@ class LocalLLM:
         ]
         
         model_names = [
+            "Phi-3-mini-4k-instruct-q4.gguf",  # The actual downloaded filename
             "phi-3-mini-4k-instruct.q4_0.gguf",
             "phi-3-mini-4k-instruct.gguf",
             "llama-2-7b-chat.q4_0.gguf",
