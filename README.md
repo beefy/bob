@@ -117,3 +117,9 @@ ctl.!default {
 }
 ```
 
+## Troubleshooting
+
+ - `src/test_speaker.py` --> test that the speaker works
+ - `src/test_tts.py` --> test the text to speech
+ - `src/test_wake_word.py` --> test the speech recognition
+ - `src/test_LLM.py` --> test the local LLM
