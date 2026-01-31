@@ -63,18 +63,38 @@ pip install -r requirements.txt
 ### Set Speaker As Default
 
 ```
-# List audio cards
+# List audio cards (playback devices - speakers)
 aplay -l
 
-# Set default card (replace X with your USB device card number)
+# List recording devices (microphones) 
+arecord -l
+
+# The output will look like:
+# === Playback devices (aplay -l) ===
+# card 0: vc4hdmi0 [vc4-hdmi-0] - Built-in HDMI audio
+# card 1: vc4hdmi1 [vc4-hdmi-1] - Built-in HDMI audio  
+# card 2: U0x19080x1331 [USB Device 0x1908:0x1331] - USB SPEAKER
+
+# === Recording devices (arecord -l) ===
+# card 3: Device [USB PnP Sound Device] - USB MICROPHONE
+
+# For your setup: USB speaker is card 2
+# Set default card to your USB speaker (card 2)
 sudo nano /etc/asound.conf
 ```
 
-Add:
+Try the simple approach first (use card 2 for your USB speaker):
+```
+defaults.pcm.card 2
+defaults.ctl.card 2
+```
+
+If that doesn't work, try:
 ```
 pcm.!default {
-    type plughw
+    type hw
     card X
+    device 0
 }
 ctl.!default {
     type hw
