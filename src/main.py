@@ -75,15 +75,35 @@ class BobAssistant:
             communicate = edge_tts.Communicate(text, self.voice)
             
             # Save to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
                 tmp_filename = tmp_file.name
                 await communicate.save(tmp_filename)
             
             # Play the audio file
             if os.path.exists(tmp_filename):
-                # Use aplay on Linux/Pi, afplay on macOS
                 if sys.platform.startswith('linux'):
-                    subprocess.run(['aplay', tmp_filename], check=True, capture_output=True)
+                    # Try different playback methods on Linux/Pi
+                    try:
+                        # First try with mpv (better format support)
+                        subprocess.run(['mpv', '--no-video', '--really-quiet', tmp_filename], 
+                                     check=True, timeout=30, capture_output=True)
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        try:
+                            # Try with ffplay (from ffmpeg)
+                            subprocess.run(['ffplay', '-nodisp', '-autoexit', '-v', 'quiet', tmp_filename], 
+                                         check=True, timeout=30, capture_output=True)
+                        except (subprocess.CalledProcessError, FileNotFoundError):
+                            try:
+                                # Convert to WAV with proper format and use aplay
+                                wav_file = tmp_filename.replace('.mp3', '.wav')
+                                subprocess.run(['ffmpeg', '-i', tmp_filename, '-acodec', 'pcm_s16le', 
+                                              '-ar', '44100', '-ac', '1', '-y', wav_file], 
+                                             check=True, capture_output=True)
+                                subprocess.run(['aplay', '-D', 'default', wav_file], check=True, capture_output=True)
+                                os.unlink(wav_file)
+                            except (subprocess.CalledProcessError, FileNotFoundError):
+                                raise Exception("No suitable audio player found. Install mpv, ffmpeg, or check aplay configuration.")
+                                
                 elif sys.platform == 'darwin':
                     subprocess.run(['afplay', tmp_filename], check=True, capture_output=True)
                 
