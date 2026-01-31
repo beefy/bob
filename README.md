@@ -59,3 +59,16 @@ sudo apt-get update
 sudo apt-get install portaudio19-dev python3-dev
 pip install -r requirements.txt
 ```
+
+### Setup TTS
+
+Create a directory for voice models and download a US English voice:
+
+```
+mkdir -p ~/piper-voices
+cd ~/piper-voices
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+```
+
+Browse other available voices at: https://github.com/rhasspy/piper/blob/master/VOICES.md
