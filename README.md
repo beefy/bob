@@ -1,6 +1,10 @@
 # bob
 Raspberry Pi AI Assistant
 
+ - LLM runs locally (Phi-3-mini)
+ - Edge TTS for text to speech
+ - speech_recognition for STT
+
 ## Hardware requirements
 
  - Raspberry Pi 5 with at least 8gb RAM
