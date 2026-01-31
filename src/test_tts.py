@@ -29,6 +29,7 @@ class PiperTTS:
         
         self.audio = None
         self.output_stream = None
+        self.piper_command = None  # Will be set by check_piper_installation
         
         print(f"Piper TTS Configuration:")
         print(f"  Sample Rate: {self.sample_rate} Hz")
@@ -38,13 +39,27 @@ class PiperTTS:
     
     def check_piper_installation(self):
         """Check if Piper is installed and available"""
-        try:
-            # Try to run piper with --help to check if it's available
-            result = subprocess.run(['piper', '--help'], 
-                                   capture_output=True, text=True, timeout=10)
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-            return False
+        # Try different ways piper might be available
+        commands_to_try = [
+            ['piper', '--help'],
+            ['python', '-m', 'piper', '--help'],
+            ['python3', '-m', 'piper', '--help'],
+            ['piper-tts', '--help']
+        ]
+        
+        for cmd in commands_to_try:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    # Store the working command for later use
+                    self.piper_command = cmd[:-1]  # Remove --help
+                    return True
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+                continue
+        
+        # If none worked, piper is not available
+        self.piper_command = None
+        return False
     
     def install_piper(self):
         """Provide instructions for installing Piper"""
@@ -221,8 +236,7 @@ class PiperTTS:
                 temp_filename = temp_file.name
             
             # Run Piper to generate speech
-            cmd = [
-                'piper',
+            cmd = self.piper_command + [
                 '--model', voice_model,
                 '--output_file', temp_filename
             ]
