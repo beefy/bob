@@ -1,5 +1,5 @@
-import pyttsx
+import pyttsx3
 
-engine = pyttsx.init()
+engine = pyttsx3.init()
 engine.say('Good morning.')
 engine.runAndWait()
