@@ -59,3 +59,26 @@ sudo apt-get update
 sudo apt-get install portaudio19-dev python3-dev
 pip install -r requirements.txt
 ```
+
+### Set Speaker As Default
+
+```
+# List audio cards
+aplay -l
+
+# Set default card (replace X with your USB device card number)
+sudo nano /etc/asound.conf
+```
+
+Add:
+```
+pcm.!default {
+    type hw
+    card X
+}
+ctl.!default {
+    type hw
+    card X
+}
+```
+
