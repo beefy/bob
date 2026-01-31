@@ -2,6 +2,15 @@
 """
 Wake Word Detection Test using SpeechRecognition
 Listens for "Hey Bob" wake word and responds with TTS.
+
+List microphones:
+python src/test_wake_word.py --list-devices
+
+Use specific microphone:
+python src/test_wake_word.py --mic-device 1
+
+Custom wake phrase:
+python src/test_wake_word.py --wake-phrase "hello computer"
 """
 
 import speech_recognition as sr
@@ -41,8 +50,9 @@ class WakeWordDetector:
         print("\\nAvailable microphones:")
         for i, name in enumerate(mic_list):
             print(f"  {i}: {name}")
-            if 'usb' in name.lower():
-                print(f"    ^ Found USB microphone: {i}")
+            # Look for USB devices - broader search
+            if any(usb_indicator in name.lower() for usb_indicator in ['usb', 'device', '0x1908']):
+                print(f"    ^ Found likely USB microphone: {i}")
                 return i
         
         print("No USB microphone found, using default")
