@@ -51,3 +51,11 @@ cd Code
 git clone git@github.com:beefy/bob.git
 cd bob
 ```
+
+### Install system dependencies
+
+```
+sudo apt-get update
+sudo apt-get install portaudio19-dev python3-dev
+pip install -r requirements.txt
+```
