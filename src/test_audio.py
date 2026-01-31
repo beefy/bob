@@ -14,14 +14,16 @@ import sys
 import argparse
 from collections import deque
 import signal
+import threading
 
 
 class AudioLoopback:
-    def __init__(self, delay_seconds=1.0, sample_rate=44100, chunk_size=1024, channels=1):
+    def __init__(self, delay_seconds=1.0, sample_rate=44100, chunk_size=1024, channels=1, volume=0.5):
         self.delay_seconds = delay_seconds
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
         self.channels = channels
+        self.volume = volume
         self.format = pyaudio.paFloat32
         
         # Calculate buffer size for delay
@@ -46,6 +48,7 @@ class AudioLoopback:
         print(f"  Chunk Size: {self.chunk_size} samples")
         print(f"  Channels: {self.channels}")
         print(f"  Delay: {self.delay_seconds} seconds")
+        print(f"  Volume: {int(self.volume * 100)}%")
         print(f"  Buffer Size: {self.delay_chunks} chunks")
     
     def list_devices(self):
@@ -181,7 +184,7 @@ class AudioLoopback:
             print("✗ No common sample rate found between input and output devices")
             return False
         
-        # Setup input stream (microphone)
+        # Setup input stream (microphone) - blocking mode
         try:
             self.input_stream = self.audio.open(
                 format=self.format,
@@ -189,15 +192,14 @@ class AudioLoopback:
                 rate=self.sample_rate,
                 input=True,
                 input_device_index=input_device,
-                frames_per_buffer=self.chunk_size,
-                stream_callback=self.input_callback
+                frames_per_buffer=self.chunk_size
             )
             print("✓ Input stream initialized")
         except Exception as e:
             print(f"✗ Failed to initialize input stream: {e}")
             return False
         
-        # Setup output stream (speaker)
+        # Setup output stream (speaker) - blocking mode
         try:
             self.output_stream = self.audio.open(
                 format=self.format,
@@ -205,8 +207,7 @@ class AudioLoopback:
                 rate=self.sample_rate,
                 output=True,
                 output_device_index=output_device,
-                frames_per_buffer=self.chunk_size,
-                stream_callback=self.output_callback
+                frames_per_buffer=self.chunk_size
             )
             print("✓ Output stream initialized")
         except Exception as e:
@@ -215,34 +216,42 @@ class AudioLoopback:
         
         return True
     
-    def input_callback(self, in_data, frame_count, time_info, status):
-        """Callback for input stream - receives microphone data"""
-        if status:
-            print(f"Input callback status: {status}")
+    def process_audio_loop(self):
+        """Main audio processing loop - blocking approach"""
+        print("Starting audio processing loop...")
         
-        # Convert bytes to numpy array
-        audio_data = np.frombuffer(in_data, dtype=np.float32)
-        
-        # Add to delay buffer
-        self.audio_buffer.append(audio_data.copy())
-        
-        return (None, pyaudio.paContinue)
-    
-    def output_callback(self, in_data, frame_count, time_info, status):
-        """Callback for output stream - sends audio to speaker"""
-        if status:
-            print(f"Output callback status: {status}")
-        
-        # Get delayed audio from buffer
-        if len(self.audio_buffer) > 0:
-            delayed_audio = self.audio_buffer[0]
-        else:
-            delayed_audio = np.zeros(frame_count, dtype=np.float32)
-        
-        # Convert numpy array back to bytes
-        output_data = delayed_audio.tobytes()
-        
-        return (output_data, pyaudio.paContinue)
+        try:
+            while self.running:
+                # Read audio from microphone
+                try:
+                    input_data = self.input_stream.read(self.chunk_size, exception_on_overflow=False)
+                    # Convert to numpy array
+                    audio_data = np.frombuffer(input_data, dtype=np.float32)
+                    
+                    # Add to delay buffer
+                    self.audio_buffer.append(audio_data.copy())
+                    
+                    # Get delayed audio from buffer
+                    if len(self.audio_buffer) > 0:
+                        delayed_audio = self.audio_buffer[0].copy()
+                        # Apply volume control
+                        delayed_audio *= self.volume
+                    else:
+                        delayed_audio = np.zeros(self.chunk_size, dtype=np.float32)
+                    
+                    # Write to speaker
+                    output_data = delayed_audio.astype(np.float32).tobytes()
+                    self.output_stream.write(output_data, exception_on_underflow=False)
+                    
+                except Exception as e:
+                    if self.running:  # Only print error if we're supposed to be running
+                        print(f"Audio processing error: {e}")
+                    break
+                    
+        except KeyboardInterrupt:
+            print("\nReceived interrupt in audio loop")
+        finally:
+            print("Audio processing loop ended")
     
     def start(self, input_device=None, output_device=None):
         """Start the audio loopback"""
@@ -256,7 +265,13 @@ class AudioLoopback:
         
         print(f"\n🎤 Audio loopback started!")
         print(f"📢 Speaking into the microphone will play back with {self.delay_seconds}s delay")
+        print(f"🔊 Volume set to {int(self.volume * 100)}%")
         print("Press Ctrl+C to stop...")
+        
+        # Start audio processing in a separate thread
+        import threading
+        self.audio_thread = threading.Thread(target=self.process_audio_loop, daemon=True)
+        self.audio_thread.start()
         
         return True
     
@@ -301,15 +316,23 @@ def main():
                        help='Sample rate in Hz (default: 44100)')
     parser.add_argument('--chunk-size', type=int, default=1024,
                        help='Audio chunk size (default: 1024)')
+    parser.add_argument('--volume', type=float, default=0.5,
+                       help='Output volume (0.0-1.0, default: 0.5)')
     
     args = parser.parse_args()
+    
+    # Validate volume
+    if args.volume < 0.0 or args.volume > 1.0:
+        print("Error: Volume must be between 0.0 and 1.0")
+        sys.exit(1)
     
     # Create loopback instance
     global loopback
     loopback = AudioLoopback(
         delay_seconds=args.delay,
         sample_rate=args.sample_rate,
-        chunk_size=args.chunk_size
+        chunk_size=args.chunk_size,
+        volume=args.volume
     )
     
     # List devices if requested
