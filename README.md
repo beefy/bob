@@ -60,6 +60,21 @@ sudo apt-get install portaudio19-dev python3-dev alsa-utils libasound2-plugins f
 pip install -r requirements.txt
 ```
 
+### Setup Local LLM (Phi-3-mini)
+
+The Phi-3-mini model will be downloaded automatically on first run of `src/test_LLM.py` (~2.4GB). Make sure you have internet connection and enough storage:
+
+```
+# Check available disk space (need ~5GB free)
+df -h
+
+# The model will be cached in ~/.cache/huggingface/
+# You can set a custom cache location if needed:
+export HF_HOME=/path/to/custom/cache
+```
+
+**Note:** First model download and loading can take 10-15 minutes on Raspberry Pi. Subsequent runs are much faster.
+
 ### Set Speaker As Default
 
 ```
