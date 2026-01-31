@@ -60,20 +60,23 @@ sudo apt-get install portaudio19-dev python3-dev alsa-utils libasound2-plugins f
 pip install -r requirements.txt
 ```
 
-### Setup Local LLM (Phi-3-mini)
+### Setup Local LLM (GGUF Models)
 
-The Phi-3-mini model will be downloaded automatically on first run of `src/test_LLM.py` (~2.4GB). Make sure you have internet connection and enough storage:
+Download a GGUF model file. Start with a small model for testing:
 
 ```
-# Check available disk space (need ~5GB free)
-df -h
+# Create models directory
+mkdir -p ~/models
+cd ~/models
 
-# The model will be cached in ~/.cache/huggingface/
-# You can set a custom cache location if needed:
-export HF_HOME=/path/to/custom/cache
+# Download a small model for testing (~600MB)
+wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.q4_0.gguf
+
+# Or download Phi-3-mini (~2.4GB)
+wget https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf
 ```
 
-**Note:** First model download and loading can take 10-15 minutes on Raspberry Pi. Subsequent runs are much faster.
+**Note:** First model run will auto-detect the downloaded model. Loading takes 1-2 minutes on Raspberry Pi.
 
 ### Set Speaker As Default
 

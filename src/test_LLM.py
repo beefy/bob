@@ -1,135 +1,125 @@
 #!/usr/bin/env python3
 """
-Local LLM Test using Phi-3-mini on Raspberry Pi 5
-Tests the Microsoft Phi-3-mini model running locally for text generation.
+Local LLM Test using GGUF models via llama-cpp-python on Raspberry Pi 5
+Tests local LLM models running via llama.cpp backend for text generation.
 """
 
 import sys
 import time
 import argparse
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+import os
+from llama_cpp import Llama
 
 
 class LocalLLM:
-    def __init__(self, model_name="microsoft/Phi-3-mini-4k-instruct", max_memory_gb=6):
-        self.model_name = model_name
-        self.max_memory_gb = max_memory_gb
-        self.tokenizer = None
+    def __init__(self, model_path=None, n_ctx=2048, n_threads=4):
+        self.model_path = model_path
+        self.n_ctx = n_ctx
+        self.n_threads = n_threads
         self.model = None
-        self.device = "cpu"  # Use CPU for Raspberry Pi
         
         print(f"Local LLM Configuration:")
-        print(f"  Model: {self.model_name}")
-        print(f"  Device: {self.device}")
-        print(f"  Max Memory: {self.max_memory_gb}GB")
+        print(f"  Model Path: {self.model_path}")
+        print(f"  Context Length: {self.n_ctx}")
+        print(f"  CPU Threads: {self.n_threads}")
+    
+    def find_model_file(self):
+        """Find a GGUF model file in common locations"""
+        possible_paths = [
+            "./models/",
+            "~/models/",
+            "/home/bob/models/",
+            "./"
+        ]
+        
+        model_names = [
+            "phi-3-mini-4k-instruct.q4_0.gguf",
+            "phi-3-mini-4k-instruct.gguf",
+            "llama-2-7b-chat.q4_0.gguf",
+            "llama-2-7b-chat.gguf",
+            "tinyllama-1.1b-chat-v1.0.q4_0.gguf"
+        ]
+        
+        print("\n🔍 Searching for model files...")
+        for path in possible_paths:
+            expanded_path = os.path.expanduser(path)
+            if os.path.exists(expanded_path):
+                for model_name in model_names:
+                    full_path = os.path.join(expanded_path, model_name)
+                    if os.path.exists(full_path):
+                        print(f"✅ Found model: {full_path}")
+                        return full_path
+        
+        print("❌ No model files found in common locations")
+        print("\nTo download a model:")
+        print("  mkdir -p ~/models")
+        print("  cd ~/models")
+        print("  # Download a small model (TinyLlama ~600MB):")
+        print("  wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.q4_0.gguf")
+        print("  # Or download Phi-3-mini (~2.4GB):")
+        print("  wget https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf")
+        
+        return None
     
     def load_model(self):
-        """Load the Phi-3-mini model and tokenizer"""
-        print("🔄 Loading model... (this may take several minutes)")
+        """Load the GGUF model"""
+        print("🔄 Loading model... (this may take a few minutes)")
         start_time = time.time()
         
+        # Find model if not specified
+        if self.model_path is None:
+            self.model_path = self.find_model_file()
+            if self.model_path is None:
+                return False
+        
         try:
-            # Load tokenizer
-            print("Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                trust_remote_code=True
+            self.model = Llama(
+                model_path=self.model_path,
+                n_ctx=self.n_ctx,
+                n_threads=self.n_threads,
+                verbose=False,  # Reduce output noise
+                use_mmap=True,
+                use_mlock=False  # Don't lock memory on Pi
             )
-            
-            # Load model with simplified parameters for Raspberry Pi
-            print("Loading model (this is the slow part)...")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                torch_dtype=torch.float32  # Explicit float32 for CPU
-            )
-            
-            # Move model to CPU explicitly
-            self.model = self.model.to('cpu')
-            
-            # Set pad token if not present
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
             
             load_time = time.time() - start_time
             print(f"✅ Model loaded successfully in {load_time:.1f} seconds")
-            
-            # Print model info
-            try:
-                num_params = sum(p.numel() for p in self.model.parameters())
-                print(f"📊 Model parameters: {num_params:,}")
-            except:
-                print("📊 Model loaded (parameter count unavailable)")
-            
             return True
             
         except Exception as e:
             print(f"❌ Failed to load model: {e}")
-            print(f"Error type: {type(e).__name__}")
-            
-            # Try alternative loading method
-            print("🔄 Trying alternative loading method...")
-            try:
-                # Simplified loading without device_map
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    trust_remote_code=True
-                )
-                self.model = self.model.to('cpu')
-                print("✅ Model loaded with alternative method")
-                return True
-            except Exception as e2:
-                print(f"❌ Alternative loading also failed: {e2}")
-                return False
+            print("This may be due to:")
+            print("  1. Corrupted model file - try re-downloading")
+            print("  2. Incompatible GGUF version - try a different quantization")
+            print("  3. Insufficient RAM - try a smaller model")
+            return False
     
-    def generate_response(self, prompt, max_length=512, temperature=0.7, do_sample=True):
+    def generate_response(self, prompt, max_tokens=256, temperature=0.7, stop=None):
         """Generate a response using the loaded model"""
-        if self.model is None or self.tokenizer is None:
+        if self.model is None:
             print("❌ Model not loaded. Call load_model() first.")
             return None
         
-        print(f"🤔 Generating response for: \"{prompt}\"")
+        print(f"🤔 Generating response for: \"{prompt[:50]}...\"")
         start_time = time.time()
         
         try:
-            # Format prompt for Phi-3 chat format
-            formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>\n"
-            
-            # Tokenize input
-            inputs = self.tokenizer.encode(
-                formatted_prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=max_length - 100  # Leave room for response
-            )
+            # Format prompt - simple format for compatibility
+            formatted_prompt = f"User: {prompt}\nAssistant: "
             
             # Generate response
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=max_length,
-                    temperature=temperature,
-                    do_sample=do_sample,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    num_return_sequences=1,
-                    repetition_penalty=1.1
-                )
+            output = self.model(
+                formatted_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=stop or ["User:", "\n\n"],
+                echo=False
+            )
             
-            # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract just the assistant's response
-            if "<|assistant|>" in response:
-                response = response.split("<|assistant|>")[-1].strip()
-            else:
-                # Fallback - remove the original prompt
-                response = response.replace(formatted_prompt, "").strip()
+            response = output['choices'][0]['text'].strip()
             
             generation_time = time.time() - start_time
-            tokens_generated = len(outputs[0]) - len(inputs[0])
+            tokens_generated = output['usage']['completion_tokens']
             tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
             
             print(f"⚡ Generated {tokens_generated} tokens in {generation_time:.1f}s ({tokens_per_second:.1f} tokens/s)")
@@ -171,26 +161,25 @@ class LocalLLM:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Local LLM test using Phi-3-mini on Raspberry Pi')
+    parser = argparse.ArgumentParser(description='Local LLM test using GGUF models on Raspberry Pi')
     parser.add_argument('--prompt', type=str, 
                        default="How many R's are in the word strawberry?",
                        help='Single prompt to test (default: R counting question)')
     parser.add_argument('--chat', action='store_true',
                        help='Start interactive chat mode')
-    parser.add_argument('--model', type=str,
-                       default="microsoft/Phi-3-mini-4k-instruct",
-                       help='Model name to use')
-    parser.add_argument('--max-memory', type=int, default=6,
-                       help='Maximum memory in GB (default: 6)')
-    parser.add_argument('--max-length', type=int, default=512,
-                       help='Maximum response length (default: 512)')
+    parser.add_argument('--model-path', type=str,
+                       help='Path to GGUF model file')
+    parser.add_argument('--max-tokens', type=int, default=256,
+                       help='Maximum response tokens (default: 256)')
     parser.add_argument('--temperature', type=float, default=0.7,
                        help='Generation temperature (default: 0.7)')
+    parser.add_argument('--threads', type=int, default=4,
+                       help='CPU threads to use (default: 4)')
     
     args = parser.parse_args()
     
     # Create LLM instance
-    llm = LocalLLM(model_name=args.model, max_memory_gb=args.max_memory)
+    llm = LocalLLM(model_path=args.model_path, n_threads=args.threads)
     
     # Load model
     if not llm.load_model():
@@ -205,7 +194,7 @@ def main():
             print(f"\n🔍 Testing with prompt: '{args.prompt}'")
             response = llm.generate_response(
                 args.prompt, 
-                max_length=args.max_length,
+                max_tokens=args.max_tokens,
                 temperature=args.temperature
             )
             
