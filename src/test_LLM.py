@@ -95,7 +95,7 @@ class LocalLLM:
         
         try:
             # Format prompt for Phi-3 chat format
-            formatted_prompt = f"<|user|>\\n{prompt}<|end|>\\n<|assistant|>\\n"
+            formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>\n"
             
             # Tokenize input
             inputs = self.tokenizer.encode(
@@ -142,12 +142,12 @@ class LocalLLM:
     
     def chat_loop(self):
         """Interactive chat loop"""
-        print("\\n💬 Interactive chat mode. Type 'quit' to exit.")
+        print("\n💬 Interactive chat mode. Type 'quit' to exit.")
         print("Ask me anything!")
         
         while True:
             try:
-                user_input = input("\\n👤 You: ").strip()
+                user_input = input("\n👤 You: ").strip()
                 
                 if user_input.lower() in ['quit', 'exit', 'bye']:
                     print("👋 Goodbye!")
@@ -164,7 +164,7 @@ class LocalLLM:
                     print("😕 Sorry, I couldn't generate a response.")
                     
             except KeyboardInterrupt:
-                print("\\n👋 Chat interrupted. Goodbye!")
+                print("\n👋 Chat interrupted. Goodbye!")
                 break
             except Exception as e:
                 print(f"❌ Error in chat: {e}")
@@ -202,7 +202,7 @@ def main():
             llm.chat_loop()
         else:
             # Single prompt mode
-            print(f"\\n🔍 Testing with prompt: '{args.prompt}'")
+            print(f"\n🔍 Testing with prompt: '{args.prompt}'")
             response = llm.generate_response(
                 args.prompt, 
                 max_length=args.max_length,
@@ -210,15 +210,15 @@ def main():
             )
             
             if response:
-                print(f"\\n🤖 Response:")
+                print(f"\n🤖 Response:")
                 print(f"{response}")
-                print("\\n✅ Test completed successfully!")
+                print("\n✅ Test completed successfully!")
             else:
                 print("❌ Test failed - no response generated")
                 sys.exit(1)
                 
     except KeyboardInterrupt:
-        print("\\n👋 Test interrupted")
+        print("\n👋 Test interrupted")
     except Exception as e:
         print(f"❌ Error during test: {e}")
         sys.exit(1)
