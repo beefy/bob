@@ -6,13 +6,23 @@ for a complete voice-controlled AI assistant on Raspberry Pi 5.
 """
 
 import speech_recognition as sr
-import pyttsx3
 import sys
 import signal
 import threading
 import time
 import os
+import asyncio
+import tempfile
+import subprocess
 from llama_cpp import Llama
+
+# Try to import edge-tts, fall back to pyttsx3 if not available
+try:
+    import edge_tts
+    EDGE_TTS_AVAILABLE = True
+except ImportError:
+    import pyttsx3
+    EDGE_TTS_AVAILABLE = False
 
 
 class BobAssistant:
@@ -27,8 +37,14 @@ class BobAssistant:
         self.microphone = sr.Microphone()
         
         # TTS setup
-        self.tts_engine = pyttsx3.init()
-        self.setup_tts()
+        self.use_edge_tts = EDGE_TTS_AVAILABLE
+        if self.use_edge_tts:
+            print("🎤 Using Edge TTS (high quality)")
+            self.voice = "en-US-AriaNeural"  # High quality female voice
+        else:
+            print("🎤 Using pyttsx3 (fallback)")
+            self.tts_engine = pyttsx3.init()
+            self.setup_pyttsx3()
         
         # Adjust for ambient noise
         print("📏 Calibrating microphone for ambient noise... Please wait.")
@@ -36,9 +52,8 @@ class BobAssistant:
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
         print("✅ Microphone calibrated")
     
-    def setup_tts(self):
-        """Configure TTS engine settings"""
-        # Get available voices and set a reasonable one
+    def setup_pyttsx3(self):
+        """Configure pyttsx3 TTS engine settings (fallback)"""
         voices = self.tts_engine.getProperty('voices')
         if voices:
             # Try to find a female voice, fall back to first available
@@ -53,11 +68,54 @@ class BobAssistant:
         self.tts_engine.setProperty('rate', 150)  # Slightly slower than default
         self.tts_engine.setProperty('volume', 0.9)
     
-    def speak(self, text):
-        """Convert text to speech"""
-        print(f"🔊 Bob: {text}")
+    async def speak_edge_tts(self, text):
+        """Use Edge TTS for high-quality speech"""
+        try:
+            # Create TTS communication
+            communicate = edge_tts.Communicate(text, self.voice)
+            
+            # Save to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                tmp_filename = tmp_file.name
+                await communicate.save(tmp_filename)
+            
+            # Play the audio file
+            if os.path.exists(tmp_filename):
+                # Use aplay on Linux/Pi, afplay on macOS
+                if sys.platform.startswith('linux'):
+                    subprocess.run(['aplay', tmp_filename], check=True, capture_output=True)
+                elif sys.platform == 'darwin':
+                    subprocess.run(['afplay', tmp_filename], check=True, capture_output=True)
+                
+                # Clean up
+                os.unlink(tmp_filename)
+                
+        except Exception as e:
+            print(f"❌ Edge TTS error: {e}")
+            # Fall back to pyttsx3
+            if hasattr(self, 'tts_engine'):
+                self.tts_engine.say(text)
+                self.tts_engine.runAndWait()
+    
+    def speak_pyttsx3(self, text):
+        """Use pyttsx3 for speech (fallback)"""
         self.tts_engine.say(text)
         self.tts_engine.runAndWait()
+    
+    def speak(self, text):
+        """Convert text to speech using best available method"""
+        print(f"🔊 Bob: {text}")
+        
+        if self.use_edge_tts:
+            # Run Edge TTS in async context
+            try:
+                asyncio.run(self.speak_edge_tts(text))
+            except Exception as e:
+                print(f"❌ Edge TTS failed, falling back to pyttsx3: {e}")
+                if hasattr(self, 'tts_engine'):
+                    self.speak_pyttsx3(text)
+        else:
+            self.speak_pyttsx3(text)
     
     def find_model_file(self):
         """Find a GGUF model file in common locations"""
