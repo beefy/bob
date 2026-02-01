@@ -4,11 +4,12 @@ import tempfile
 import subprocess
 import os
 import sys
+import argparse
 
-async def test_edge_tts():
+async def test_edge_tts(text=None, voice="en-US-AriaNeural"):
     """Test Edge TTS with a sample phrase"""
-    text = 'The quick brown fox jumps over the lazy dog.'
-    voice = "en-US-AriaNeural"  # High quality female voice
+    if text is None:
+        text = 'The quick brown fox jumps over the lazy dog.'
     
     print(f"🔊 Speaking: {text}")
     print(f"🎤 Using voice: {voice}")
@@ -62,4 +63,14 @@ async def test_edge_tts():
         print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(test_edge_tts())
+    parser = argparse.ArgumentParser(description='Test Edge TTS with custom text')
+    parser.add_argument('text', nargs='?', 
+                       default='The quick brown fox jumps over the lazy dog.',
+                       help='Text to speak (default: "The quick brown fox jumps over the lazy dog.")')
+    parser.add_argument('--voice', '-v', 
+                       default='en-US-AriaNeural',
+                       help='Voice to use (default: en-US-AriaNeural)')
+    
+    args = parser.parse_args()
+    
+    asyncio.run(test_edge_tts(args.text, args.voice))
